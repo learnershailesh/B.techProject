@@ -5,6 +5,9 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const multer = require("multer");
 const ethers = require("ethers");
+const dotenv = require('dotenv');
+dotenv.config({path: './.env'});
+
 
 const app = express();
 app.use(cors());
@@ -29,7 +32,7 @@ const User = mongoose.model('User', userSchema);
 // Set up file upload using multer
 const upload = multer({ dest: "uploads/" });
 
-mongoose.connect("mongodb://localhost:27017/real-estate-auth", {
+mongoose.connect( process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
@@ -218,7 +221,7 @@ app.get("/protected", authenticateToken, (req, res) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT ;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
