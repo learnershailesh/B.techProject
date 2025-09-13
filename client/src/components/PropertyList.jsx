@@ -16,6 +16,7 @@ const PropertyList = ({ contract, signer }) => {
     success: null,
     propertyId: null
   });
+  const [propertyOwnerFilter, setPropertyOwnerFilter] = useState("all"); // all, mine, others
 
   const filteredProperties = properties
     .filter(property => 
@@ -23,6 +24,16 @@ const PropertyList = ({ contract, signer }) => {
        property.location?.toLowerCase().includes(searchTerm.toLowerCase())) &&
       (!filterForSale || property.forSale)
     )
+    .filter(property => {
+      if (!signer || propertyOwnerFilter === "all") return true;
+      if (propertyOwnerFilter === "mine") {
+        return property.owner.toLowerCase() === signer.address.toLowerCase();
+      }
+      if (propertyOwnerFilter === "others") {
+        return property.owner.toLowerCase() !== signer.address.toLowerCase();
+      }
+      return true;
+    })
     .sort((a, b) => {
       if (sortBy === "price") return parseFloat(a.price) - parseFloat(b.price);
       if (sortBy === "name") return a.name.localeCompare(b.name);
@@ -72,6 +83,31 @@ const PropertyList = ({ contract, signer }) => {
       return;
     }
 
+    // Find the property object for more checks
+    const property = properties.find(p => p.id === propertyId);
+    if (!property) {
+      setTransactionStatus({
+        loading: false,
+        error: "Property not found.",
+        success: null,
+        propertyId
+      });
+      return;
+    }
+    if (!property.forSale) {
+      setTransactionStatus({
+        loading: false,
+        error: "This property is not for sale.",
+        success: null,
+        propertyId
+      });
+      return;
+    }
+
+    // Log for debugging
+    console.log("Attempting to buy property:", property);
+    console.log("Price (ETH):", price, "Price (contract, Wei):", property.price);
+
     setTransactionStatus({
       loading: true,
       error: null,
@@ -119,9 +155,53 @@ const PropertyList = ({ contract, signer }) => {
 
     } catch (error) {
       console.error("Error buying property:", error);
+      let errorMsg = error.message || "Failed to buy property. Please try again.";
+      // Try to extract revert reason from error data
+      if (error?.error?.data?.message) {
+        errorMsg = error.error.data.message;
+      }
       setTransactionStatus({
         loading: false,
-        error: error.message || "Failed to buy property. Please try again.",
+        error: errorMsg,
+        success: null,
+        propertyId
+      });
+    }
+  };
+
+  // Add toggleForSale handler
+  const handleToggleForSale = async (propertyId, currentForSale) => {
+    if (!contract || !signer) {
+      setError("Wallet not connected");
+      return;
+    }
+    setTransactionStatus({
+      loading: true,
+      error: null,
+      success: null,
+      propertyId
+    });
+    try {
+      const tx = await contract.toggleForSale(propertyId, !currentForSale, {
+        gasLimit: 200000
+      });
+      await tx.wait();
+      setTransactionStatus({
+        loading: false,
+        error: null,
+        success: `Property marked as ${!currentForSale ? 'For Sale' : 'Not for Sale'}.`,
+        propertyId
+      });
+      await fetchProperties();
+    } catch (error) {
+      console.error("Error toggling for sale status:", error);
+      let errorMsg = error.message || "Failed to toggle for sale status.";
+      if (error?.error?.data?.message) {
+        errorMsg = error.error.data.message;
+      }
+      setTransactionStatus({
+        loading: false,
+        error: errorMsg,
         success: null,
         propertyId
       });
@@ -192,6 +272,17 @@ const PropertyList = ({ contract, signer }) => {
             />
             <span className="text-gray-700">For Sale Only</span>
           </label>
+
+          {/* Property owner filter dropdown */}
+          <select
+            value={propertyOwnerFilter}
+            onChange={e => setPropertyOwnerFilter(e.target.value)}
+            className="rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-black"
+          >
+            <option value="all">All Properties</option>
+            <option value="mine">My Properties</option>
+            <option value="others">Others' Properties</option>
+          </select>
         </div>
       </div>
 
@@ -248,6 +339,28 @@ const PropertyList = ({ contract, signer }) => {
                     {property.forSale ? "For Sale" : "Not for Sale"}
                   </span>
 
+                  {/* Owner toggle button */}
+                  {property.owner.toLowerCase() === signer?.address.toLowerCase() && (
+                    <button
+                      onClick={() => handleToggleForSale(property.id, property.forSale)}
+                      disabled={transactionStatus.loading && transactionStatus.propertyId === property.id}
+                      className={`px-4 py-2 rounded-lg text-white font-medium transition-all duration-200 ${
+                        transactionStatus.loading && transactionStatus.propertyId === property.id
+                          ? "bg-gray-400 cursor-not-allowed"
+                          : property.forSale
+                            ? "bg-yellow-600 hover:bg-yellow-700 shadow-md hover:shadow-lg"
+                            : "bg-green-600 hover:bg-green-700 shadow-md hover:shadow-lg"
+                      }`}
+                    >
+                      {transactionStatus.loading && transactionStatus.propertyId === property.id
+                        ? "Processing..."
+                        : property.forSale
+                          ? "Mark as Not for Sale"
+                          : "Mark as For Sale"}
+                    </button>
+                  )}
+
+                  {/* Buy button for non-owners */}
                   {property.forSale && 
                    property.owner.toLowerCase() !== signer?.address.toLowerCase() && (
                     <button

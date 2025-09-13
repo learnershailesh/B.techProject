@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Route, Routes, Navigate } from "react-router-dom";
-import { connectWallet } from './utils/connectWallet'; // Adjust path as needed
-import { getContract } from './utils/contract'; // Adjust path as needed
+import { connectWallet } from './utils/connectWallet';
+import { getContract } from './utils/contract'; 
 
 // Import components
 import Navbar from "./components/Navbar";

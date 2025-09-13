@@ -51,37 +51,68 @@ const Login = ({ setIsAuthenticated }) => {
     setError("");
 
     try {
+      // Check if MetaMask is installed
       if (!window.ethereum) {
-        throw new Error("MetaMask is not installed!");
+        throw new Error("MetaMask is not installed! Please install MetaMask extension first.");
       }
 
+      console.log("MetaMask detected, requesting accounts...");
+
+      // Request account access
       const provider = new ethers.BrowserProvider(window.ethereum);
       const accounts = await provider.send("eth_requestAccounts", []);
+      
+      if (!accounts || accounts.length === 0) {
+        throw new Error("No accounts found. Please connect your MetaMask wallet.");
+      }
+
       const address = accounts[0];
+      console.log("Connected address:", address);
+
       const signer = await provider.getSigner();
 
-      // Get nonce from server
+      // Check if server is running
+      console.log("Getting nonce from server...");
       const nonceResponse = await axios.post("http://localhost:5000/auth/metamask/nonce", {
         walletAddress: address,
       });
 
+      console.log("Nonce received:", nonceResponse.data);
+
       // Sign the message
       const message = nonceResponse.data.message;
+      console.log("Signing message:", message);
       const signature = await signer.signMessage(message);
+      console.log("Signature created:", signature);
 
       // Verify signature with backend
+      console.log("Verifying signature...");
       const authResponse = await axios.post("http://localhost:5000/auth/metamask/verify", {
         walletAddress: address,
         signature,
       });
 
+      console.log("Auth response:", authResponse.data);
+
       if (authResponse.data.token) {
         localStorage.setItem("token", authResponse.data.token);
         setIsAuthenticated(true);
         navigate("/");
+      } else {
+        throw new Error("No token received from server");
       }
     } catch (err) {
-      setError(err.message || "MetaMask login failed");
+      console.error("MetaMask login error:", err);
+      
+      if (err.code === 'NETWORK_ERROR' || err.message.includes('Network Error')) {
+        setError("Cannot connect to server. Please make sure the server is running on port 5000.");
+      } else if (err.response?.status === 500) {
+        setError("Server error: " + (err.response.data?.error || "Internal server error"));
+      } else if (err.message.includes('MetaMask')) {
+        setError(err.message);
+      } else {
+        setError("MetaMask login failed: " + (err.response?.data?.error || err.message));
+      }
     } finally {
       setLoading(false);
     }

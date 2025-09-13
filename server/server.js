@@ -6,11 +6,14 @@ const bcrypt = require("bcrypt");
 const multer = require("multer");
 const ethers = require("ethers");
 const dotenv = require('dotenv');
-dotenv.config({path: './.env'});
+dotenv.config({path: './config.env'});
 
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+  credentials: true
+}));
 app.use(express.json());
 
 // Update your User model (in models/User.js)
@@ -124,10 +127,17 @@ app.post("/auth/metamask/nonce", async (req, res) => {
   try {
     const { walletAddress } = req.body;
     
+    if (!walletAddress) {
+      return res.status(400).json({ error: "Wallet address is required" });
+    }
+
+    console.log("Generating nonce for wallet:", walletAddress);
+    
     let user = await User.findOne({ walletAddress, authType: 'metamask' });
     
     if (!user) {
       // Create new user if wallet address not found
+      console.log("Creating new user for wallet:", walletAddress);
       user = new User({
         walletAddress,
         nonce: generateNonce(),
@@ -136,17 +146,21 @@ app.post("/auth/metamask/nonce", async (req, res) => {
       await user.save();
     } else {
       // Update nonce for existing user
+      console.log("Updating nonce for existing user:", walletAddress);
       user.nonce = generateNonce();
       await user.save();
     }
 
+    const message = `Welcome to Real Estate DApp! Please sign this message to verify your wallet ownership. Nonce: ${user.nonce}`;
+    
+    console.log("Nonce generated successfully for:", walletAddress);
     res.json({ 
       nonce: user.nonce,
-      message: `Welcome to Real Estate DApp! Please sign this message to verify your wallet ownership. Nonce: ${user.nonce}`
+      message: message
     });
   } catch (error) {
     console.error('Nonce generation error:', error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Internal server error: " + error.message });
   }
 });
 
@@ -155,16 +169,26 @@ app.post("/auth/metamask/verify", async (req, res) => {
   try {
     const { walletAddress, signature, name = '' } = req.body;
     
+    if (!walletAddress || !signature) {
+      return res.status(400).json({ error: "Wallet address and signature are required" });
+    }
+
+    console.log("Verifying signature for wallet:", walletAddress);
+    
     const user = await User.findOne({ walletAddress, authType: 'metamask' });
     if (!user) {
-      return res.status(400).json({ error: "User not found" });
+      return res.status(400).json({ error: "User not found. Please get nonce first." });
     }
 
     const message = `Welcome to Real Estate DApp! Please sign this message to verify your wallet ownership. Nonce: ${user.nonce}`;
+    console.log("Verifying message:", message);
+    console.log("Signature:", signature);
     
     const isValidSignature = verifySignature(message, signature, walletAddress);
+    console.log("Signature valid:", isValidSignature);
+    
     if (!isValidSignature) {
-      return res.status(400).json({ error: "Invalid signature" });
+      return res.status(400).json({ error: "Invalid signature. Please try again." });
     }
 
     // Update user info if name is provided (for first-time registration)
@@ -183,6 +207,7 @@ app.post("/auth/metamask/verify", async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    console.log("Login successful for wallet:", walletAddress);
     res.json({ 
       token, 
       user: { 
@@ -193,7 +218,7 @@ app.post("/auth/metamask/verify", async (req, res) => {
     });
   } catch (error) {
     console.error('MetaMask verification error:', error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Internal server error: " + error.message });
   }
 });
 

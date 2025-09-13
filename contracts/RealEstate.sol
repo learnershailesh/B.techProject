@@ -43,5 +43,5 @@ contract RealEstate {
         properties[_id].forSale = _forSale;
     }
 }
-
+ 
 // deployed : 0x87043a5a759D2A47DA5270e59E62679aab1F13D8
